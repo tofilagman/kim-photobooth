@@ -3,7 +3,7 @@
 	import { onDestroy } from 'svelte';
 	import type { Template } from '$lib/types';
 	import { createCaptureSource, type CaptureSource } from '$lib/booth/capture';
-	import { loadImage, renderTemplate } from '$lib/booth/compose';
+	import { loadImage, renderTemplate, loadTemplateImages } from '$lib/booth/compose';
 	import { FILTERS } from '$lib/booth/filters';
 	import TemplateCanvas from '$lib/components/TemplateCanvas.svelte';
 
@@ -132,10 +132,11 @@
 		}
 	}
 
-	function composeDataUrl(): string {
+	async function composeDataUrl(): Promise<string> {
 		if (!selected) throw new Error('no template');
+		const images = await loadTemplateImages(selected);
 		const canvas = document.createElement('canvas');
-		renderTemplate(canvas, selected, photos, filterId);
+		renderTemplate(canvas, selected, photos, filterId, images);
 		return canvas.toDataURL('image/jpeg', 0.95);
 	}
 
@@ -144,7 +145,7 @@
 		printError = null;
 		step = 'printing';
 		try {
-			const dataUrl = composeDataUrl();
+			const dataUrl = await composeDataUrl();
 			const res = await fetch('/api/print', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },

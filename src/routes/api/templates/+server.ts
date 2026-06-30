@@ -23,6 +23,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		background: body.background ?? { type: 'color', color: '#1a1a1a' },
 		slots: body.slots,
 		texts: body.texts ?? [],
+		assets: body.assets ?? [],
 		builtin: false, // user edits/copies are never builtin
 		createdAt: body.createdAt ?? Date.now(),
 		updatedAt: Date.now()

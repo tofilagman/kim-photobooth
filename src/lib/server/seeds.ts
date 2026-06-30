@@ -21,6 +21,7 @@ export const SEED_TEMPLATES: Template[] = [
 		texts: [
 			{ id: 't1', text: 'Kim Photobooth', x: 0.5, y: 0.95, size: 0.028, color: '#f5d76e', align: 'center', bold: true }
 		],
+		assets: [],
 		builtin: true,
 		createdAt: now,
 		updatedAt: now
@@ -35,6 +36,7 @@ export const SEED_TEMPLATES: Template[] = [
 		texts: [
 			{ id: 't1', text: 'Kim Photobooth', x: 0.5, y: 0.94, size: 0.06, color: '#ffffff', align: 'center', bold: true }
 		],
+		assets: [],
 		builtin: true,
 		createdAt: now,
 		updatedAt: now
@@ -54,6 +56,28 @@ export const SEED_TEMPLATES: Template[] = [
 		texts: [
 			{ id: 't1', text: 'Kim Photobooth', x: 0.5, y: 0.955, size: 0.04, color: '#38bdf8', align: 'center', bold: true }
 		],
+		assets: [],
+		builtin: true,
+		createdAt: now,
+		updatedAt: now
+	},
+	{
+		id: 'birthday-18',
+		name: '18th Birthday',
+		width: 1200,
+		height: 1800,
+		background: { type: 'gradient', from: '#ff6ec4', to: '#7873f5', angle: 160 },
+		slots: [
+			{ id: 's1', x: 0.1, y: 0.16, w: 0.8, h: 0.34, radius: 0.04, rotation: -3 },
+			{ id: 's2', x: 0.1, y: 0.54, w: 0.8, h: 0.34, radius: 0.04, rotation: 3 }
+		],
+		texts: [
+			{ id: 't1', text: '🎉 Happy 18th 🎉', x: 0.5, y: 0.1, size: 0.055, color: '#ffffff', align: 'center', bold: true },
+			{ id: 't2', text: '🎂', x: 0.16, y: 0.5, size: 0.09, color: '#ffffff', align: 'center', rotation: -12 },
+			{ id: 't3', text: '🎈', x: 0.85, y: 0.52, size: 0.09, color: '#ffffff', align: 'center', rotation: 10 },
+			{ id: 't4', text: 'Forever Eighteen ✨', x: 0.5, y: 0.95, size: 0.035, color: '#fff0b3', align: 'center', bold: true }
+		],
+		assets: [],
 		builtin: true,
 		createdAt: now,
 		updatedAt: now

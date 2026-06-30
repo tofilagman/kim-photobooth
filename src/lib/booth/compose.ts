@@ -4,14 +4,38 @@ import { filterById } from './filters';
 // Renders a template + captured photos to a canvas. The SAME function drives
 // the on-screen preview and the full-resolution image sent to the printer, so
 // what the guest sees is exactly what prints (WYSIWYG).
+//
+// Z-order: background → photos (slots) → image assets → text. Image-based
+// content (background + assets) must be preloaded into `images` because canvas
+// drawing is synchronous; use loadTemplateImages() to build that map.
 
-export type PhotoInput = CanvasImageSource & { width: number; height: number };
+export type Loaded = CanvasImageSource & { width: number; height: number };
+export type ImageMap = Map<string, Loaded>;
 
-/** Load a data URL / object URL into an ImageBitmap (decoded off the main thread). */
+/** Load a data URL / object URL / http url into an ImageBitmap. */
 export async function loadImage(src: string): Promise<ImageBitmap> {
 	const res = await fetch(src);
 	const blob = await res.blob();
 	return await createImageBitmap(blob);
+}
+
+/** Preload every image a template references (background + assets). */
+export async function loadTemplateImages(t: Template): Promise<ImageMap> {
+	const srcs = new Set<string>();
+	if (t.background.type === 'image' && t.background.src) srcs.add(t.background.src);
+	for (const a of t.assets ?? []) if (a.src) srcs.add(a.src);
+
+	const map: ImageMap = new Map();
+	await Promise.all(
+		[...srcs].map(async (src) => {
+			try {
+				map.set(src, await loadImage(src));
+			} catch {
+				/* skip broken image */
+			}
+		})
+	);
+	return map;
 }
 
 function roundRectPath(
@@ -32,12 +56,30 @@ function roundRectPath(
 	ctx.closePath();
 }
 
-function paintBackground(ctx: CanvasRenderingContext2D, t: Template) {
+const rad = (deg: number) => ((deg ?? 0) * Math.PI) / 180;
+
+function paintBackground(ctx: CanvasRenderingContext2D, t: Template, images: ImageMap) {
 	const { width: W, height: H } = t;
+	if (t.background.type === 'image') {
+		const img = images.get(t.background.src);
+		ctx.fillStyle = '#000';
+		ctx.fillRect(0, 0, W, H);
+		if (img) {
+			const fit = t.background.fit ?? 'cover';
+			const scale =
+				fit === 'cover'
+					? Math.max(W / img.width, H / img.height)
+					: Math.min(W / img.width, H / img.height);
+			const dw = img.width * scale;
+			const dh = img.height * scale;
+			ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+		}
+		return;
+	}
 	if (t.background.type === 'gradient') {
-		const angle = ((t.background.angle ?? 0) * Math.PI) / 180;
-		const x = Math.cos(angle);
-		const y = Math.sin(angle);
+		const a = rad(t.background.angle ?? 0);
+		const x = Math.cos(a);
+		const y = Math.sin(a);
 		const g = ctx.createLinearGradient(
 			W / 2 - (x * W) / 2,
 			H / 2 - (y * H) / 2,
@@ -60,8 +102,9 @@ function paintBackground(ctx: CanvasRenderingContext2D, t: Template) {
 export function renderTemplate(
 	canvas: HTMLCanvasElement,
 	t: Template,
-	photos: ((CanvasImageSource & { width: number; height: number }) | null)[],
-	filterId = 'none'
+	photos: (Loaded | null)[],
+	filterId = 'none',
+	images: ImageMap = new Map()
 ) {
 	const { width: W, height: H } = t;
 	canvas.width = W;
@@ -70,45 +113,66 @@ export function renderTemplate(
 	if (!ctx) return;
 
 	ctx.clearRect(0, 0, W, H);
-	paintBackground(ctx, t);
+	paintBackground(ctx, t, images);
 
 	const filterCss = filterById(filterId).css;
 
+	// photos into slots (rotated, clipped, cover-fit, centered)
 	t.slots.forEach((slot, i) => {
-		const sx = slot.x * W;
-		const sy = slot.y * H;
 		const sw = slot.w * W;
 		const sh = slot.h * H;
+		const cx = (slot.x + slot.w / 2) * W;
+		const cy = (slot.y + slot.h / 2) * H;
 		const r = (slot.radius ?? 0) * Math.min(sw, sh);
 
 		ctx.save();
-		roundRectPath(ctx, sx, sy, sw, sh, r);
+		ctx.translate(cx, cy);
+		ctx.rotate(rad(slot.rotation ?? 0));
+		roundRectPath(ctx, -sw / 2, -sh / 2, sw, sh, r);
 		ctx.clip();
 
 		const photo = photos[i];
 		if (photo) {
 			ctx.filter = filterCss;
-			// object-fit: cover
 			const scale = Math.max(sw / photo.width, sh / photo.height);
 			const dw = photo.width * scale;
 			const dh = photo.height * scale;
-			ctx.drawImage(photo, sx + (sw - dw) / 2, sy + (sh - dh) / 2, dw, dh);
+			ctx.drawImage(photo, -dw / 2, -dh / 2, dw, dh);
 			ctx.filter = 'none';
 		} else {
-			// empty slot placeholder
 			ctx.fillStyle = 'rgba(255,255,255,0.08)';
-			ctx.fillRect(sx, sy, sw, sh);
+			ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
 		}
 		ctx.restore();
 	});
 
-	// text decorations on top
+	// image assets (stickers / overlays) above photos
+	for (const a of t.assets ?? []) {
+		const img = images.get(a.src);
+		if (!img) continue;
+		const aw = a.w * W;
+		const ah = a.h * H;
+		const cx = (a.x + a.w / 2) * W;
+		const cy = (a.y + a.h / 2) * H;
+		ctx.save();
+		ctx.globalAlpha = a.opacity ?? 1;
+		ctx.translate(cx, cy);
+		ctx.rotate(rad(a.rotation ?? 0));
+		ctx.drawImage(img, -aw / 2, -ah / 2, aw, ah);
+		ctx.restore();
+	}
+
+	// text on top
 	for (const tx of t.texts) {
 		const size = tx.size * H;
+		ctx.save();
+		ctx.translate(tx.x * W, tx.y * H);
+		ctx.rotate(rad(tx.rotation ?? 0));
 		ctx.font = `${tx.bold ? '700 ' : ''}${size}px ${tx.font ?? 'system-ui, sans-serif'}`;
 		ctx.fillStyle = tx.color;
 		ctx.textAlign = tx.align ?? 'center';
-		ctx.textBaseline = 'alphabetic';
-		ctx.fillText(tx.text, tx.x * W, tx.y * H);
+		ctx.textBaseline = 'middle';
+		ctx.fillText(tx.text, 0, 0);
+		ctx.restore();
 	}
 }

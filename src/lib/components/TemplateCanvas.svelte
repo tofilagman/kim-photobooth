@@ -1,8 +1,6 @@
 <script lang="ts">
 	import type { Template } from '$lib/types';
-	import { renderTemplate } from '$lib/booth/compose';
-
-	type Photo = (CanvasImageSource & { width: number; height: number }) | null;
+	import { renderTemplate, loadTemplateImages, type Loaded, type ImageMap } from '$lib/booth/compose';
 
 	let {
 		template,
@@ -11,20 +9,39 @@
 		class: klass = ''
 	}: {
 		template: Template;
-		photos?: Photo[];
+		photos?: (Loaded | null)[];
 		filterId?: string;
 		class?: string;
 	} = $props();
 
 	let canvas: HTMLCanvasElement;
+	let images = $state<ImageMap>(new Map());
+
+	// Preload background/asset images whenever the set of image srcs changes.
+	const imageKey = $derived(
+		JSON.stringify([
+			template.background.type === 'image' ? template.background.src : null,
+			(template.assets ?? []).map((a) => a.src)
+		])
+	);
+	$effect(() => {
+		void imageKey;
+		let cancelled = false;
+		loadTemplateImages(template).then((map) => {
+			if (!cancelled) images = map;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	$effect(() => {
 		if (!canvas) return;
-		// touch reactive deps so re-render happens on change
 		void template;
 		void photos;
 		void filterId;
-		renderTemplate(canvas, template, photos, filterId);
+		void images;
+		renderTemplate(canvas, template, photos, filterId, images);
 	});
 </script>
 
